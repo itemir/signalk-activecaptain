@@ -47,6 +47,32 @@ module.exports = function(app) {
     }
   }
 
+  function calculateNewPosition(latitude, longitude, bearing, distance) {
+    const earthRadius = 6371; // Radius of the Earth in kilometers
+    const latitudeRad = toRadians(latitude);
+    const longitudeRad = toRadians(longitude);
+    const bearingRad = toRadians(bearing);
+
+    const newLatitudeRad = Math.asin(Math.sin(latitudeRad) * Math.cos(distance / earthRadius) +
+      Math.cos(latitudeRad) * Math.sin(distance / earthRadius) * Math.cos(bearingRad));
+
+    const newLongitudeRad = longitudeRad + Math.atan2(Math.sin(bearingRad) * Math.sin(distance / earthRadius) * Math.cos(latitudeRad),
+      Math.cos(distance / earthRadius) - Math.sin(latitudeRad) * Math.sin(newLatitudeRad));
+
+    const newLatitude = toDegrees(newLatitudeRad);
+    const newLongitude = toDegrees(newLongitudeRad);
+
+    return { latitude: newLatitude, longitude: newLongitude };
+  }
+
+  function toRadians(degrees) {
+    return degrees * Math.PI / 180;
+  }
+
+  function toDegrees(radians) {
+    return radians * 180 / Math.PI;
+  }
+
   function checkAndPublishPois() {
     let position = app.getSelfPath('navigation.position');
     if (!position) {
@@ -110,12 +136,19 @@ module.exports = function(app) {
           app.debug(`Cannot decode response for POI ${poi.id}: ${JSON.stringify(data)}`);
           retturn;
         }
+
         let notes;
         if ((data.pointOfInterest.notes) && (data.pointOfInterest.notes[0])) {
           notes = data.pointOfInterest.notes[0].value;
+          // We don't want to trash SignalK with a ton of text
+          const lengthLimit = 280;
+          if (notes.length > lengthLimit) {
+            notes = notes.slice(0, lengthLimit)+'...';
+          }
         } else {
           notes = 'Unknown';
         }
+
         pois[poi.id] = {
           id: poi.id,
           name: data.pointOfInterest.name,
@@ -134,6 +167,10 @@ module.exports = function(app) {
 
   function retrievePois(lat, lng) {
     let url=`https://activecaptain.garmin.com/community/api/v1/points-of-interest/bbox`;
+    // Calculate the coordinates of the "box" that we will use to retrieve the POIs
+    // This is a rectangle with 200km diagonal length
+    let nwCoords = calculateNewPosition(lat, lng, -45, 50);
+    let seCoords = calculateNewPosition(lat, lng, 135, 50);
     request.post({
       url: url,
       json: true,
@@ -142,10 +179,10 @@ module.exports = function(app) {
       },
       json: {
         // This is a super crude way of calculating "distance" but will do for now unless people go to the poles
-        'north': lat+0.5,
-        'south': lat-0.5,
-        'east': lng+0.5,
-        'west': lng-0.4,
+        'north': nwCoords.latitude,
+        'west': nwCoords.longitude,
+        'south': seCoords.latitude,
+        'east': seCoords.longitude,
         'zoomLevel': 17 // Get granular
       }
     }, function(error, response, data) {

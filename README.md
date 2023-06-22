@@ -8,4 +8,4 @@ Publishes points of interest (POI) from ActiveCaptain under the following keys
 * `pointsOfInterest.activeCaptain.{id}.url`
 * `pointsOfInterest.activeCaptain.{id}.notes`
 
-Only searches POIs from plus minus 0.5 degrees delta of latitude from the current position.
+POIs are searched within roughly 50km radius of the current location.

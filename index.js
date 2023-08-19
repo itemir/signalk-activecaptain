@@ -22,7 +22,7 @@ module.exports = function(app) {
   var plugin = {};
   var pois = {};
 
-  plugin.id = "activecaptain";
+  plugin.id = "signalk-activecaptain";
   plugin.name = "ActiveCaptain";
   plugin.description = "Publishes ActiveCaptain Points of Interest";
 
@@ -30,7 +30,7 @@ module.exports = function(app) {
     // Position data is not immediately available, delay it
     setTimeout( function() {
       checkAndPublishPois();
-    }, 5000);
+    }, 15000);
 
     setInterval( function() {
       checkAndPublishPois();
@@ -85,38 +85,27 @@ module.exports = function(app) {
   }
 
   function emitSignalKMessage(poi) {
-    let values = [
-      {
-         path: `${poiKey}.${poi.id}.name`,
-         value: poi.name
-      },
-      {
-         path: `${poiKey}.${poi.id}.position`,
-         value: poi.position
-       },
-       {
-         path: `${poiKey}.${poi.id}.type`,
-         value: poi.type
-       },
-       {
-         path: `${poiKey}.${poi.id}.notes`,
-         value: poi.notes
-       },
-       {
-         path: `${poiKey}.${poi.id}.url`,
-         value: poi.url
-       },
-     ]
-     app.handleMessage(plugin.id, {
-       updates: [
-         {
-           values: values
-         }
-       ]
-     });
-   }
+    let poiData = {
+      name: poi.name,
+      position: poi.position,
+      type: poi.type,
+      notes: poi.notes,
+      url: poi.url
+    }
+    let values = [{
+         path: `${poiKey}.${poi.id}`,
+         value: poiData
+    }]
+    app.handleMessage(plugin.id, {
+      updates: [
+        {
+          values: values
+        }
+      ]
+    });
+  }
 
-   function retrievePoiDetails(poi) {
+  function retrievePoiDetails(poi) {
     if (poi.id in pois) {
       app.debug(`POI details for ID ${poi.id} already known, used cached values`);
       emitSignalKMessage(pois[poi.id]);
@@ -134,7 +123,7 @@ module.exports = function(app) {
       if (!error && response.statusCode == 200) {
         if (!data.pointOfInterest) {
           app.debug(`Cannot decode response for POI ${poi.id}: ${JSON.stringify(data)}`);
-          retturn;
+          return;
         }
 
         let notes;
@@ -146,7 +135,7 @@ module.exports = function(app) {
             notes = notes.slice(0, lengthLimit)+'...';
           }
         } else {
-          notes = 'Unknown';
+          notes = '';
         }
 
         pois[poi.id] = {
@@ -169,8 +158,9 @@ module.exports = function(app) {
     let url=`https://activecaptain.garmin.com/community/api/v1/points-of-interest/bbox`;
     // Calculate the coordinates of the "box" that we will use to retrieve the POIs
     // This is a rectangle with 200km diagonal length
-    let nwCoords = calculateNewPosition(lat, lng, -45, 50);
-    let seCoords = calculateNewPosition(lat, lng, 135, 50);
+    const radius = 50;
+    let nwCoords = calculateNewPosition(lat, lng, -45, radius);
+    let seCoords = calculateNewPosition(lat, lng, 135, radius);
     request.post({
       url: url,
       json: true,
